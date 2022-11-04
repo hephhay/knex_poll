@@ -1,11 +1,11 @@
 import { GraphQLNonNull, GraphQLString } from "graphql";
-import { GraphQLDate, getProjectionFromAST, ProjectionType } from "graphql-compose";
+import { GraphQLDate } from "graphql-compose";
 
 import { schemaComposer } from "./";
 import { Model } from "objection";
 import { Poll, PollTC } from "./poll.model";
-import { User, UserTC } from "./user.model";
-import { GenericModel, creteGraphqlType, resolveRelMap } from "../generator";
+import { User } from "./user.model";
+import { GenericModel, creteGraphqlType } from "../generator";
 import _ from "lodash";
 
 export class Choice extends GenericModel{
@@ -62,10 +62,12 @@ export class Choice extends GenericModel{
                 type: new GraphQLNonNull(GraphQLString)
             },
             createdAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             },
             updatedAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             }
         }
     }

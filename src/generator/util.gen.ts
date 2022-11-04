@@ -1,28 +1,13 @@
 import { ProjectionType } from "graphql-compose";
 import _ from "lodash";
-import { BaseType, DeepBaseType, FieldType, GenericModel, InputDict, resolveRelMap } from "../generator";
 
-// export function pickByRecursive<T>(objMap: _.Dictionary<T> | null | undefined, condition: (value: T, key: string) => boolean) {
-
-//     let retMap = _.pickBy(
-//         objMap,
-//         (objValue, objKey) => _.isObject(objValue) || condition(objValue, objKey)
-//     );
-
-//     _.forOwn(retMap, (value, key) => {
-//         if(_.isObject(value)){
-
-//             const newMap = pickByRecursive(value as _.Dictionary<T>, condition)
-
-//             if(!_.isEmpty(newMap))
-//                 _.set(retMap, key, newMap);
-//         }
-
-//     })
-
-//     return retMap
-
-// }
+import {
+    BaseType,
+    DeepBaseType,
+    FieldType,
+    GenericModel,
+    resolveVal
+} from "../generator";
 
 export function pickByRecursive<T extends object>(objMap: T, condition: (value: T, key: string) => boolean) {
 
@@ -51,7 +36,7 @@ export function pickByRecursive<T extends object>(objMap: T, condition: (value: 
 
 export function pickRelation<TSource extends typeof GenericModel>(objInfo: ProjectionType, model: TSource) {
     
-    const relMaps = resolveRelMap(model.relationMappings);
+    const relMaps = resolveVal(model.relationMappings);
 
     let retGraph: ProjectionType = _.pick(objInfo, Object.keys(relMaps));
 
@@ -70,31 +55,6 @@ export function pickRelation<TSource extends typeof GenericModel>(objInfo: Proje
     }
     return retGraph;
 }
-
-// export function pickRelation2(objInfo: ProjectionType) {
-
-//     if (_.size(objInfo)){
-//         _.forOwn(objInfo, (value: ProjectionType, key: string) => {
-//             const mCls: TContext =  relMaps[key].modelClass as any;
-
-//             retGraph[key] = pickRelation2(value, mCls);
-//         });
-
-//         retGraph = _.mapValues(retGraph, val => _.isEqual(val, {}) ? true : val);
-
-//     }
-//     return retGraph;
-// }
-
-// export function changeScalarType<TContext>(value: InputDict<TContext>, changeFN: (scalarType: string) => string): InputDict<TContext>{
-//     return _.mapValues(value, opType => {
-//         if(_.isObject(opType))
-//             return changeScalarType(opType as InputDict<TContext>, changeFN);
-
-//         else
-//             return changeFN(opType);
-//     });
-// }
 
 export function mapValuesRecursive<T extends object, TIn, TRet>
 (value: T, changeFN: (scalarType: TIn) => TRet): { [P in keyof T]: any} {
@@ -130,4 +90,36 @@ export function flattenObj(collection: DeepBaseType, baseName: string, parent?: 
             res[`${baseName === '' ? '' : _.lowerCase(baseName)+'.'}${propName}`] = collection[key] as FieldType;
     }
     return res;
+}
+
+export function deepMapKeys(
+    originalObject: DeepBaseType | DeepBaseType [],
+    callback: (key: string) => string
+): DeepBaseType | DeepBaseType[] {
+
+    if (Array.isArray(originalObject)) {
+        return originalObject.map(item => deepMapKeys(item, callback)) as DeepBaseType[]
+    }
+
+    else if (typeof originalObject !== 'object') {
+        return originalObject
+    }
+
+    return Object.keys(originalObject || {}).reduce((newObject, key) => {
+
+        const newKey = callback(key)
+        const originalValue = originalObject[key]
+        let newValue = originalValue
+
+        if (typeof originalValue === 'object') {
+            newValue = deepMapKeys(originalValue as DeepBaseType, callback)
+        }
+
+        return {
+            ...newObject,
+            [newKey]: newValue,
+        }
+
+    }, {} as DeepBaseType);
+
 }

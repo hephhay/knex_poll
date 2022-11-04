@@ -63,10 +63,12 @@ export class Poll extends GenericModel{
                 type: new GraphQLNonNull(GraphQLString)
             },
             createdAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             },
             updatedAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             }
         }
     }

@@ -14,9 +14,14 @@ export interface RelMaps {
 
 export type RelMapsThunk = () => RelMaps;
 
-export class GenericModel extends Model{
+export interface CustomGraphQLFieldConfig<TSource, TContext, TArgs = any> extends GraphQLFieldConfig<TSource, TContext, TArgs>{
+    input?: string
+}
 
-    static graqhqlSchema: ThunkObjMap<GraphQLFieldConfig<any, any>>;
+export class GenericModel extends Model{
+    static optionalID?: string[] | string;
+
+    static graqhqlSchema: ThunkObjMap<CustomGraphQLFieldConfig<any, any>>;
 
     static relationMappings: RelMaps| RelMapsThunk; 
 }
@@ -37,8 +42,12 @@ export type BaseType = {
     [fieldName: string]: FieldType;
 }
 
-export type DeepBaseType = {
-    [fieldName: string]: FieldType | BaseType; 
+// export type DeepBaseType = {
+//     [fieldName: string]: FieldType | BaseType; 
+// }
+
+export interface DeepBaseType {
+    [fieldName: string]: FieldType | BaseType | DeepBaseType | DeepBaseType[]; 
 }
 
 export interface SortType {
@@ -47,7 +56,7 @@ export interface SortType {
 
 export interface OperatorType{
     _operator?: DeepBaseType;
-};
+}
 
 export type FilterType = BaseType & OperatorType;
 
@@ -58,10 +67,11 @@ export type WhereOp = [string, string, FieldType];
 export type WhereParams = Array<WhereOp | BaseWhere>;
 
 export interface ArgType{
-    filter: FilterType;
-    sort: SortType
+    filter?: FilterType;
+    sort?: SortType
     page?: Number
     size?: Number
+    record?: DeepBaseType | DeepBaseType 
 }
 
 export interface ResolverParams<TContext>{
@@ -77,7 +87,7 @@ export type ModelOrder = {
     null?: 'first'| 'last'
 }
 
-export const operations = ['find'];
+export const operations = ['find', 'create'];
 
 export const predicates = ['One', 'Many'];
 
@@ -106,3 +116,4 @@ export const resolveMap: Record<string, string[]> = operations.reduce(
 
 export * from './model_tc';
 export * from './query_resolvers';
+export * from './util.gen'

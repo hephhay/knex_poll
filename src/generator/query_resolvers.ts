@@ -5,9 +5,13 @@ import {
     InputTypeComposerFieldConfigMapDefinition,
     SchemaComposer,
     deepmerge,
-    ProjectionType
+    ProjectionType,
+    ObjectTypeComposerArgumentConfigAsObjectDefinition,
+    sc,
+    ObjectTypeComposerArgumentConfigDefinition
 } from "graphql-compose";
 import _ from "lodash";
+import { Model } from 'objection';
 
 import {
     DeepBaseType,
@@ -20,17 +24,17 @@ import {
     OPValue,
     resolveMap,
     ResolverParams,
+    resolveVal,
     SortType,
     WhereOp,
-    WhereParams
-} from ".";
-import { read_db } from "../db.service";
-import {
+    WhereParams,
     flattenObj,
     mapValuesRecursive,
     pickByRecursive,
-    pickRelation
-} from "./util.gen";
+    pickRelation,
+    deepMapKeys
+} from ".";
+import { create_db, read_db } from "../db.service";
 
 export function addCRUD<TSource extends typeof GenericModel, TContext>(
     sc: SchemaComposer<TContext>,
@@ -38,44 +42,69 @@ export function addCRUD<TSource extends typeof GenericModel, TContext>(
     modelTC: ObjectTypeComposer<TSource, TContext>
 ) {
 
-    _.forOwn(resolveMap, (value, operarion) => {
+    _.forOwn(resolveMap, (value, operation) => {
         value.forEach((predicate) => {
             const isSingle = predicate == 'One';
 
-            const pageArg = isSingle ? {} : {
-                page: {
+            const modelArg: {
+                sort?: InputTypeComposer<TContext>,
+                filter?: InputTypeComposer<TContext>,
+                page?: ObjectTypeComposerArgumentConfigAsObjectDefinition,
+                size?: ObjectTypeComposerArgumentConfigAsObjectDefinition,
+                record?: ObjectTypeComposerArgumentConfigDefinition,
+            } = {}
+
+            if (operation === 'find' && !isSingle){
+                modelArg.page = {
                     type: 'Int',
                     defaultValue: 1
-                },
-                size: {
+                };
+
+                modelArg.size = {
                     type: 'Int',
                     defaultValue: 5
-                }
+                };
+
             }
 
-            const modelArg = {
-                filter: getOrCreateITC(
+            if (operation === 'create'){
+
+                const createRTC = getOrCreateITC(
                     sc,
-                    `${model.name}FilterInput`,
+                    `${model.name}CreateRecordITC`,
                     model,
                     modelTC,
-                    createFilterInput
-                ),
-                ...pageArg as object,
-                sort: getOrCreateITC(
+                    createRecordITC
+                )
+
+                modelArg.record = isSingle ? createRTC : createRTC.NonNull.List.NonNull
+
+            }
+
+            else{
+
+                modelArg.sort = getOrCreateITC(
                     sc,
                     `${model.name}SortInput`,
                     model,
                     modelTC,
                     createSortInput
-                )
-            };
+                );
+
+                modelArg.filter = getOrCreateITC(
+                    sc,
+                    `${model.name}FilterInput`,
+                    model,
+                    modelTC,
+                    createFilterInput
+                );
+            }
 
             modelTC.addResolver({
                 args: modelArg,
-                name: operarion + predicate,
+                name: operation + predicate,
                 type: isSingle ? modelTC : [modelTC],
-                resolve: getOpResolver(model, modelTC, operarion, isSingle)
+                resolve: getOpResolver(model, modelTC, operation, isSingle)
             });
         })
     });
@@ -119,6 +148,16 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
             );
         }
 
+        let cleanRecord: DeepBaseType | DeepBaseType[] = {};
+
+        const record = resolverParams.args.record;
+
+        if (record !== undefined)
+            cleanRecord = deepMapKeys(record, key => {
+                const mapTo: Record<string, string> = {dbref : '#dbref'}
+                return mapTo[key] === undefined ? key : mapTo[key]
+            })
+
         const relInfo = pickRelation(infoMap, model);
 
         const relField = pickRelation(fieldProjection, model);
@@ -131,6 +170,12 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
                     relField: relField,
                     order: sortArray
                 });
+            }
+        
+            case 'create':{
+                const a =  await create_db(model, cleanRecord, relInfo);
+                console.log(a)
+                return a
             }
         }
 
@@ -208,7 +253,7 @@ const getOrCreateITC = <TSource extends typeof GenericModel, TContext>(
     createInput: <TSource extends typeof GenericModel, TContext>(
                     model: TSource,
                     modelTC: ObjectTypeComposer<TSource, TContext>,
-                    sc?: SchemaComposer<TContext>,
+                    sc: SchemaComposer<TContext>,
                 ) => InputTypeComposer<TContext>
 ) => {
 
@@ -220,12 +265,115 @@ const getOrCreateITC = <TSource extends typeof GenericModel, TContext>(
 
 };
 
+function createRecordITC<TSource extends typeof GenericModel, TContext>
+(
+    model: TSource,
+    modelTC: ObjectTypeComposer<TSource, TContext>,
+    sc: SchemaComposer<TContext>,
+) {
+
+    const recordInput = recordTCRecursive(
+        model,
+        modelTC,
+        'CreateRecordITC',
+        model.name,
+        1
+    );
+
+    sc.add(recordInput);
+
+    return recordInput;
+
+}
+
+function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
+    model: TSource,
+    typeComposer: ObjectTypeComposer<TSource, TContext> | InputTypeComposer<TContext>,
+    baseName: string,
+    fieldName: string,
+    depth = Number.POSITIVE_INFINITY,
+) {
+
+    const TCName = `${fieldName}${baseName}`;
+
+    let createRITC: InputTypeComposer<TContext>;
+
+    if (typeComposer instanceof ObjectTypeComposer)
+        createRITC = typeComposer.getITC().clone(TCName);
+
+    else
+        createRITC = typeComposer.clone(TCName);
+
+    const graphqlSchema = resolveVal(model.graqhqlSchema)
+
+    createRITC.getFieldNames().forEach(fieldName => {
+
+        const fieldTC = createRITC.getFieldTC(fieldName)
+
+        const inputOpt = graphqlSchema[fieldName]?.input
+
+        if (inputOpt === 'omit' || fieldName === 'id')
+            createRITC.removeField(fieldName);
+
+        if (model.idColumn.includes(fieldName) || fieldName === 'null')
+            createRITC.makeFieldNullable(fieldName);
+
+        if (fieldTC instanceof InputTypeComposer){
+
+            createRITC.makeFieldNullable(fieldName);
+
+            const relationMap = resolveVal(model.relationMappings);
+
+            const relInfo = relationMap[fieldName]
+
+            if (depth > 0){
+
+                if (relInfo.relation === Model.ManyToManyRelation)
+                    createRITC.setField(
+                        fieldName,
+                        initializeITCRecusive({"id" : 'ID!'}, TCName, fieldName)
+                    );
+
+                else{
+
+                    const RTC = relInfo.typeComposer;
+
+                    const relTC = RTC instanceof ObjectTypeComposer ? RTC : sc.getOTC(RTC);
+
+                    createRITC.setField(
+                        fieldName,
+                        recordTCRecursive(
+                            relInfo.modelClass,
+                            relTC,
+                            TCName,
+                            fieldName,
+                            depth - 1
+                        )
+                    );
+
+                }
+
+            }
+
+            else
+                createRITC.removeField(fieldName);
+
+        }
+
+    });
+
+    return createRITC;
+
+}
+
 const createSortInput = <TSource extends typeof GenericModel, TContext>(
     model: TSource,
     modelTC: ObjectTypeComposer<TSource, TContext>,
-    sc?: SchemaComposer<TContext>,
+    sc: SchemaComposer<TContext>,
 ) => {
-    const nullInputMap = fieldsTCRecusive(sc!.getITC(`${model.name}NullInput`));
+    const modelNullInputType = makeFieldsNullRecusive(modelTC.getITC(), model.name, 1);
+
+    const nullInputMap = fieldsTCRecusive(modelNullInputType);
 
     const sortInputMap = mapValuesRecursive(
         nullInputMap,
@@ -242,10 +390,11 @@ const createSortInput = <TSource extends typeof GenericModel, TContext>(
 
 const createFilterInput = <TSource extends typeof GenericModel, TContext>(
     model : TSource,
-    modelTC:ObjectTypeComposer<TSource, TContext>
+    modelTC:ObjectTypeComposer<TSource, TContext>,
+    sc: SchemaComposer<TContext>,
 ) => {
 
-    const modelFilterType = makeFieldsNullRecusive(modelTC.getITC(), model.name, 1)
+    const modelFilterType = sc!.getITC(`${model.name}NullInput`)
                                     .clone(`${model.name}FilterInput`);
 
     const inputMap = fieldsTCRecusive(modelFilterType);
@@ -321,32 +470,32 @@ function makeFieldsNullRecusive<TContext>(
 
     const newName = (ITCFieldName ? ITCFieldName : '') + modelName;
 
-    const modelFilterType = inputTC.clone(`${newName}NullInput`);
+    const modelNullType = inputTC.clone(`${newName}NullInput`);
 
-    modelFilterType.getFieldNames().forEach(fieldName => {
-        modelFilterType.makeFieldNullable(fieldName);
+    modelNullType.getFieldNames().forEach(fieldName => {
+        modelNullType.makeFieldNullable(fieldName);
 
-        let fieldTC = modelFilterType.getFieldTC(fieldName);
+        let fieldTC = modelNullType.getFieldTC(fieldName);
 
         if (fieldTC instanceof InputTypeComposer){
 
             if ( depth === 0){
-                modelFilterType.removeField(fieldName);
+                modelNullType.removeField(fieldName);
             }
 
             else {
             
-                modelFilterType.setField(
+                modelNullType.setField(
                     fieldName,
                     makeFieldsNullRecusive(fieldTC, newName, (depth - 1), fieldName)
                 );
             }
         }
 
-        modelFilterType.makeFieldNullable(fieldName)
+        modelNullType.makeFieldNullable(fieldName)
 
     });
 
-    return modelFilterType
+    return modelNullType
 
 }

@@ -32,7 +32,7 @@ export function creteGraphqlType<TSource extends typeof GenericModel, TContext =
     
     else if (idCol) addIDField(idCol);
 
-    const relMaps = resolveRelMap(model.relationMappings);
+    const relMaps = resolveVal(model.relationMappings);
 
     Object.entries(relMaps).forEach(([key, value])  => {
         const relType = () => {
@@ -66,5 +66,5 @@ export function creteGraphqlType<TSource extends typeof GenericModel, TContext =
 
 }
 
-export const resolveRelMap = (relMaps: RelMaps | RelMapsThunk) =>  
-    _.isFunction(relMaps)? relMaps() : relMaps;
+export const resolveVal = <T>(funVal: T | (() => T)) =>  
+    _.isFunction(funVal) ? funVal() : funVal;

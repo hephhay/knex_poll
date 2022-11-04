@@ -5,8 +5,6 @@ import { Model } from "objection";
 import { schemaComposer } from "./";
 import { Choice, ChoiceTC  } from "./choice.model";
 import { User, UserTC } from "./user.model";
-import { PollTC } from "./poll.model";
-import _ from 'lodash';
 import { GenericModel, creteGraphqlType } from "../generator";
 
 export class Vote extends GenericModel{
@@ -47,7 +45,8 @@ export class Vote extends GenericModel{
     static get graqhqlSchema(){
         return{
             votedOn: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             }
         }
     }

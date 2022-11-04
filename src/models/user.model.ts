@@ -70,13 +70,16 @@ export class User extends GenericModel{
                 type: new GraphQLNonNull(GraphQLString)
             },
             isAdmin: {
-                type: new GraphQLNonNull(GraphQLBoolean)
+                type: new GraphQLNonNull(GraphQLBoolean),
+                input: 'null'
             },
             createdAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             },
             updatedAt: {
-                type: new GraphQLNonNull(GraphQLDate)
+                type: new GraphQLNonNull(GraphQLDate),
+                input: 'omit'
             }
         }
     }

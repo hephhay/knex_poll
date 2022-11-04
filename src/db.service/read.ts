@@ -17,15 +17,15 @@ export async function read_db<TSource extends typeof GenericModel>(
         relInfo?: ProjectionType,
         relField?: ProjectionType
     }
-){
+) {
     const retQuery = model.query();
 
     const { where, order, relInfo, relField } = queryProp;
 
-    retQuery.joinRelated(relField as object)
+    retQuery.joinRelated( relField as object );
 
     where?.forEach((whereVal => {
-        retQuery.where(...whereVal as [any, any, any])
+        retQuery.where(...whereVal as [any, any, any]);
     }))
 
     if (!(_.isEmpty(order))) retQuery.orderBy(order as ColumnRefOrOrderByDescriptor[])
