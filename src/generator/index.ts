@@ -42,10 +42,6 @@ export type BaseType = {
     [fieldName: string]: FieldType;
 }
 
-// export type DeepBaseType = {
-//     [fieldName: string]: FieldType | BaseType; 
-// }
-
 export interface DeepBaseType {
     [fieldName: string]: FieldType | BaseType | DeepBaseType | DeepBaseType[]; 
 }

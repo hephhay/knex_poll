@@ -1,8 +1,8 @@
 import { GraphQLID, GraphQLObjectType, GraphQLNonNull } from "graphql";
-import { ObjectTypeComposer, SchemaComposer } from "graphql-compose";
+import { SchemaComposer } from "graphql-compose";
 import _ from 'lodash';
 import { Model } from "objection";
-import { GenericModel, RelMaps, RelMapsThunk } from ".";
+import { GenericModel, resolveVal } from ".";
 
 export function creteGraphqlType<TSource extends typeof GenericModel, TContext = any>
 (
@@ -43,14 +43,14 @@ export function creteGraphqlType<TSource extends typeof GenericModel, TContext =
                 case Model.BelongsToOneRelation:
                 case Model.HasOneRelation:{
 
-                    if (_.isString(vtc)) return `${vtc}!`
+                    if (_.isString(vtc)) return `${vtc}!`;
 
-                    return vtc.NonNull
+                    return vtc.NonNull;
                 }
                 default:{
-                    if (_.isString(vtc)) return `[${vtc}]!`
+                    if (_.isString(vtc)) return `[${vtc}]!`;
 
-                    return vtc.List.NonNull
+                    return vtc.List.NonNull;
                 }
             }
         };
@@ -65,6 +65,3 @@ export function creteGraphqlType<TSource extends typeof GenericModel, TContext =
     return modelTC;
 
 }
-
-export const resolveVal = <T>(funVal: T | (() => T)) =>  
-    _.isFunction(funVal) ? funVal() : funVal;

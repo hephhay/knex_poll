@@ -34,7 +34,10 @@ import {
     pickRelation,
     deepMapKeys
 } from ".";
-import { create_db, read_db } from "../db.service";
+import {
+    insertToDB,
+    readFromDb
+} from "../db.service";
 
 export function addCRUD<TSource extends typeof GenericModel, TContext>(
     sc: SchemaComposer<TContext>,
@@ -153,31 +156,34 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
         const record = resolverParams.args.record;
 
         if (record !== undefined)
-            cleanRecord = deepMapKeys(record, key => {
-                const mapTo: Record<string, string> = {dbref : '#dbref'}
-                return mapTo[key] === undefined ? key : mapTo[key]
-            })
+            cleanRecord = deepMapKeys(record, key => ({dbRef : '#dbRef'}[key] ?? key));
 
         const relInfo = pickRelation(infoMap, model);
 
         const relField = pickRelation(fieldProjection, model);
 
+        let returnDB: typeof readFromDb
+
         switch (operarion){
-            case 'find':{
-                return await read_db(model, isSingle, {
-                    relInfo : relInfo,
-                    where: whereFilter,
-                    relField: relField,
-                    order: sortArray
-                });
-            }
-        
+
             case 'create':{
-                const a =  await create_db(model, cleanRecord, relInfo);
-                console.log(a)
-                return a
+                returnDB = insertToDB;
+                break;
+            }
+
+            default: {
+                returnDB = readFromDb;
             }
         }
+
+        return await returnDB(model, {
+            single: isSingle,
+            relInfo : relInfo,
+            where: whereFilter,
+            relField: relField,
+            order: sortArray,
+            record: cleanRecord
+        });
 
     }
 }
@@ -189,7 +195,7 @@ function orderModel<TSource extends typeof GenericModel>
         sortVal => sortVal ? 'ASC' : 'DESC'
     );
 
-    const sortArray: Array<ModelOrder> = []
+    const sortArray: Array<ModelOrder> = [];
 
     _.forOwn(newSort, (sortStr, sortCoulmn) => {
         sortArray.push({
@@ -212,7 +218,7 @@ function filterMap(filterRP: FilterType) {
             newFilterMap = deepmerge(newFilterMap, opValue);
         });
 
-    return newFilterMap
+    return newFilterMap;
 }
 
 function createFlatFilter<TSource extends typeof GenericModel>
@@ -324,14 +330,14 @@ function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
 
             const relationMap = resolveVal(model.relationMappings);
 
-            const relInfo = relationMap[fieldName]
+            const relInfo = relationMap[fieldName];
 
             if (depth > 0){
 
                 if (relInfo.relation === Model.ManyToManyRelation)
                     createRITC.setField(
                         fieldName,
-                        initializeITCRecusive({"id" : 'ID!'}, TCName, fieldName)
+                        initializeITCRecusive({"dbRef" : 'ID!'}, TCName, fieldName)
                     );
 
                 else{
@@ -406,7 +412,7 @@ const createFilterInput = <TSource extends typeof GenericModel, TContext>(
     operatorFilter.in = mapValuesRecursive(
         operatorFilter.in,
         opType => `[${opType}]`
-    )
+    );
 
     const operatorITC = initializeITCRecusive(operatorFilter, model.name, 'operator');
 
@@ -436,7 +442,7 @@ _.forOwn(nestedObj, (value, key) => {
     return InputTypeComposer.createTemp({
         name: inputName,
         fields: nestedObj as InputTypeComposerFieldConfigMapDefinition
-    })
+    });
 
 }
 
@@ -453,6 +459,7 @@ function fieldsTCRecusive<TContext>(inputTC: InputTypeComposer<TContext>) {
                 mapValue = fieldsTCRecusive(currentTC);
             else
                 mapValue = currentTC.getTypeName() as any;
+
             return _.set(collate, current, mapValue);
         },
 
@@ -496,6 +503,6 @@ function makeFieldsNullRecusive<TContext>(
 
     });
 
-    return modelNullType
+    return modelNullType;
 
 }

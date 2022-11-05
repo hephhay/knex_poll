@@ -5,8 +5,7 @@ import {
     BaseType,
     DeepBaseType,
     FieldType,
-    GenericModel,
-    resolveVal
+    GenericModel
 } from "../generator";
 
 export function pickByRecursive<T extends object>(objMap: T, condition: (value: T, key: string) => boolean) {
@@ -42,9 +41,9 @@ export function pickRelation<TSource extends typeof GenericModel>(objInfo: Proje
 
     if (_.size(retGraph)){
         _.forOwn(retGraph, (value: ProjectionType, key: string) => {
-            const mCls: TSource =  relMaps[key].modelClass as any;
+            const mCls =  relMaps[key].modelClass;
 
-            retGraph[key] = pickRelation(value, mCls);
+            retGraph[key] = pickRelation(value, mCls as TSource);
         });
 
         retGraph = _.mapValues(
@@ -84,7 +83,7 @@ export function flattenObj(collection: DeepBaseType, baseName: string, parent?: 
                 '',
                 propName,
                 res,
-                depth+1
+                depth + 1
             );
         else
             res[`${baseName === '' ? '' : _.lowerCase(baseName)+'.'}${propName}`] = collection[key] as FieldType;
@@ -97,23 +96,20 @@ export function deepMapKeys(
     callback: (key: string) => string
 ): DeepBaseType | DeepBaseType[] {
 
-    if (Array.isArray(originalObject)) {
-        return originalObject.map(item => deepMapKeys(item, callback)) as DeepBaseType[]
-    }
+    if (Array.isArray(originalObject))
+        return originalObject.map(item => deepMapKeys(item, callback)) as DeepBaseType[];
 
-    else if (typeof originalObject !== 'object') {
-        return originalObject
-    }
+    else if (typeof originalObject !== 'object')
+        return originalObject;
 
     return Object.keys(originalObject || {}).reduce((newObject, key) => {
 
-        const newKey = callback(key)
-        const originalValue = originalObject[key]
-        let newValue = originalValue
+        const newKey = callback(key);
+        const originalValue = originalObject[key];
+        let newValue = originalValue;
 
-        if (typeof originalValue === 'object') {
-            newValue = deepMapKeys(originalValue as DeepBaseType, callback)
-        }
+        if (typeof originalValue === 'object')
+            newValue = deepMapKeys(originalValue as DeepBaseType, callback);
 
         return {
             ...newObject,
@@ -123,3 +119,6 @@ export function deepMapKeys(
     }, {} as DeepBaseType);
 
 }
+
+export const resolveVal = <T>(funVal: T | (() => T)) =>  
+    _.isFunction(funVal) ? funVal() : funVal;

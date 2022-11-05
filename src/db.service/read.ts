@@ -1,38 +1,47 @@
-import { ProjectionType } from "graphql-compose";
 import _ from "lodash";
 import { ColumnRefOrOrderByDescriptor } from "objection";
 
-import {
-    GenericModel,
-    ModelOrder,
-    WhereParams
-} from "../generator";
+import { DBHelper, QueryProperties } from ".";
+import { GenericModel } from "../generator";
 
-export async function read_db<TSource extends typeof GenericModel>(
-    model : TSource,
-    single: boolean = true,
-    queryProp: {
-        where?: WhereParams,
-        order?: ModelOrder[],
-        relInfo?: ProjectionType,
-        relField?: ProjectionType
-    }
+export function prepareDB({
+        beforeQuery,
+        actionQuery,
+    }: DBHelper,
+    initialOne = true,
 ) {
-    const retQuery = model.query();
+    return <TSource extends typeof GenericModel>(
+        model : TSource,
+        queryProp: QueryProperties
+    ) => {
+        const retQuery = model.query();
 
-    const { where, order, relInfo, relField } = queryProp;
+        const { single, where, order, relInfo, relField } = queryProp;
 
-    retQuery.joinRelated( relField as object );
+        if (beforeQuery) beforeQuery(retQuery, queryProp)
 
-    where?.forEach((whereVal => {
-        retQuery.where(...whereVal as [any, any, any]);
-    }))
+        if (!_.isEmpty(relField)) retQuery.joinRelated(relField);
 
-    if (!(_.isEmpty(order))) retQuery.orderBy(order as ColumnRefOrOrderByDescriptor[])
+        where?.forEach(whereVal => {
+            retQuery.where(...whereVal as [any, any, any]);
+        });
 
-    if (single) retQuery.first();
+        if (!(_.isEmpty(order))) retQuery.orderBy(order as ColumnRefOrOrderByDescriptor[])
 
-    if (!(_.isEmpty(relInfo))) retQuery.withGraphFetched(relInfo);
+        if (single && initialOne) retQuery.first();
 
-    return retQuery;
+        if (actionQuery) actionQuery(retQuery, queryProp);
+
+        if (!(_.isEmpty(relInfo))) retQuery.withGraphFetched(relInfo);
+
+        return retQuery;
+    }
 }
+
+export const readFromDb = prepareDB({});
+
+export const insertToDB = prepareDB({
+    beforeQuery: (retQuery, { record }) => {
+        retQuery.insertGraphAndFetch(record as object);
+    }
+}, false);
