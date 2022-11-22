@@ -7,7 +7,6 @@ import {
     deepmerge,
     ProjectionType,
     ObjectTypeComposerArgumentConfigAsObjectDefinition,
-    sc,
     ObjectTypeComposerArgumentConfigDefinition
 } from "graphql-compose";
 import _ from "lodash";
@@ -31,13 +30,23 @@ import {
     flattenObj,
     mapValuesRecursive,
     pickByRecursive,
+    deepMapKeys,
+    BaseType,
+    FieldType,
+    pickModifiers,
     pickRelation,
-    deepMapKeys
+    pickFieldGraph,
+    FieldConfigMap,
+    ArgType
 } from ".";
 import {
+    deleteFromDb,
     insertToDB,
-    readFromDb
-} from "../db.service";
+    readFromDb,
+    updateDb
+} from "../controllers";
+
+// create interface that can that kepp common properties
 
 export function addCRUD<TSource extends typeof GenericModel, TContext>(
     sc: SchemaComposer<TContext>,
@@ -85,6 +94,19 @@ export function addCRUD<TSource extends typeof GenericModel, TContext>(
             }
 
             else{
+                if (operation === 'update'){
+
+                    const updateRTC = getOrCreateITC(
+                        sc,
+                        `${model.name}UpdateRecordITC`,
+                        model,
+                        modelTC,
+                        updateRecordITC
+                    );
+
+                    modelArg.record = isSingle ? updateRTC : updateRTC.NonNull.List.NonNull
+
+                }
 
                 modelArg.sort = getOrCreateITC(
                     sc,
@@ -117,7 +139,7 @@ export function addCRUD<TSource extends typeof GenericModel, TContext>(
 function getOpResolver<TSource extends typeof GenericModel, TContext>(
     model : TSource,
     modelTC: ObjectTypeComposer<TSource, TContext>,
-    operarion: string,
+    operation: string,
     isSingle: boolean,
 ){
 
@@ -156,18 +178,33 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
         const record = resolverParams.args.record;
 
         if (record !== undefined)
-            cleanRecord = deepMapKeys(record, key => ({dbRef : '#dbRef'}[key] ?? key));
+            cleanRecord = editRecord(record, operation);
 
-        const relInfo = pickRelation(infoMap, model);
+        const relField = pickRelation(fieldProjection, model, pickModifiers);
 
-        const relField = pickRelation(fieldProjection, model);
+        const relInfo  = pickFieldGraph(infoMap, cleanRP?.sort ?? {}, model);
+
+        const baseModifier = _.union(
+            pickModifiers(infoMap, model),
+            pickModifiers(fieldProjection, model)
+        );
 
         let returnDB: typeof readFromDb
 
-        switch (operarion){
+        switch (operation){
 
-            case 'create':{
+            case 'create': {
                 returnDB = insertToDB;
+                break;
+            }
+
+            case 'update': {
+                returnDB = updateDb;
+                break;
+            }
+
+            case 'deletek': {
+                returnDB = deleteFromDb;
                 break;
             }
 
@@ -176,11 +213,13 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
             }
         }
 
-        return await returnDB(model, {
+        return await returnDB({
+            model: model,
             single: isSingle,
             relInfo : relInfo,
             where: whereFilter,
             relField: relField,
+            modifiers: baseModifier,
             order: sortArray,
             record: cleanRecord
         });
@@ -188,10 +227,47 @@ function getOpResolver<TSource extends typeof GenericModel, TContext>(
     }
 }
 
-function orderModel<TSource extends typeof GenericModel>
+function editRecord(record: DeepBaseType| DeepBaseType[], operation: string){
+    let cleanRecord: DeepBaseType | DeepBaseType[] = {};
+
+    cleanRecord = deepMapKeys(record, key => ({dbRef : '#dbRef'}[key] ?? key));
+
+        if (operation === 'update' && !_.isArray(record)){
+
+            cleanRecord = _.reduce(cleanRecord, (accumulator, curVal, key) => {
+                if(_.isArray(curVal)){
+
+                    accumulator[key] = (curVal as BaseType[]).reduce((cont, val) => {
+
+                        // similar lines abstract to function
+
+                        if(val.dbAdd)
+                            (cont.dbAdd as FieldType[]).push(val.dbAdd);
+
+                        if(val.dbRem)
+                            (cont.dbRem as FieldType[]).push(val.dbRem);
+
+                        return cont
+                    }, {dbAdd: [], dbRem : []});
+                }
+                else
+                    accumulator[key] = curVal as FieldType;
+                return accumulator;
+
+            }, {} as DeepBaseType);
+        }
+
+        return cleanRecord
+
+}
+
+export function orderModel<TSource extends typeof GenericModel>
 (sortArg: SortType, model: TSource) {
     const newSort = _.mapValues(
-        flattenObj(sortArg as DeepBaseType, model.name),
+        flattenObj(
+            _.omitBy(sortArg, value => _.isPlainObject(value)),
+            model.name
+        ),
         sortVal => sortVal ? 'ASC' : 'DESC'
     );
 
@@ -271,6 +347,45 @@ const getOrCreateITC = <TSource extends typeof GenericModel, TContext>(
 
 };
 
+function updateRecordITC<TSource extends typeof GenericModel, TContext>
+(
+    model: TSource,
+    modelTC: ObjectTypeComposer<TSource, TContext>,
+    sc: SchemaComposer<TContext>,
+) {
+
+    const updateRTC = makeFieldsNullRecusive(
+        sc.getITC(`${model.name}CreateRecordITC`),
+        'UpdateRecordITC',
+        `${model.name}`
+    );
+
+    updateRTC.getFieldNames().forEach(fieldName => {
+
+        const fieldTC = updateRTC.getFieldTC(fieldName);
+
+        if(fieldTC instanceof InputTypeComposer){
+
+            if (fieldTC.hasField('dbRef')){
+
+                const nameTC = `${model.name}UpdateRecordITC`;
+
+                updateRTC.setField(
+                    fieldName,
+                    initializeITCRecusive({dbAdd: 'ID', dbRem: 'ID'}, nameTC, fieldName).NonNull.List
+                );
+
+            }
+            else
+                updateRTC.removeField(fieldName);
+
+        }
+
+    });
+
+    return updateRTC;
+}
+
 function createRecordITC<TSource extends typeof GenericModel, TContext>
 (
     model: TSource,
@@ -281,6 +396,7 @@ function createRecordITC<TSource extends typeof GenericModel, TContext>
     const recordInput = recordTCRecursive(
         model,
         modelTC,
+        sc,
         'CreateRecordITC',
         model.name,
         1
@@ -292,9 +408,10 @@ function createRecordITC<TSource extends typeof GenericModel, TContext>
 
 }
 
-function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
+export function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
     model: TSource,
     typeComposer: ObjectTypeComposer<TSource, TContext> | InputTypeComposer<TContext>,
+    sc: SchemaComposer<TContext>,
     baseName: string,
     fieldName: string,
     depth = Number.POSITIVE_INFINITY,
@@ -318,10 +435,10 @@ function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
 
         const inputOpt = graphqlSchema[fieldName]?.input
 
-        if (inputOpt === 'omit' || fieldName === 'id')
+        if (inputOpt === 'omit' || fieldName === 'id' || inputOpt === 'never')
             createRITC.removeField(fieldName);
 
-        if (model.idColumn.includes(fieldName) || fieldName === 'null')
+        if (inputOpt === 'null')
             createRITC.makeFieldNullable(fieldName);
 
         if (fieldTC instanceof InputTypeComposer){
@@ -337,7 +454,7 @@ function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
                 if (relInfo.relation === Model.ManyToManyRelation)
                     createRITC.setField(
                         fieldName,
-                        initializeITCRecusive({"dbRef" : 'ID!'}, TCName, fieldName)
+                        initializeITCRecusive({dbRef : 'ID!'}, TCName, fieldName).NonNull.List
                     );
 
                 else{
@@ -351,6 +468,7 @@ function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
                         recordTCRecursive(
                             relInfo.modelClass,
                             relTC,
+                            sc,
                             TCName,
                             fieldName,
                             depth - 1
@@ -368,6 +486,13 @@ function recordTCRecursive<TSource extends typeof GenericModel, TContext>(
 
     });
 
+    const excluded_fields = _.pickBy(
+        graphqlSchema,
+        (value: any) => value.input === 'only'
+    );
+
+    createRITC.addFields(excluded_fields as any);
+
     return createRITC;
 
 }
@@ -377,7 +502,7 @@ const createSortInput = <TSource extends typeof GenericModel, TContext>(
     modelTC: ObjectTypeComposer<TSource, TContext>,
     sc: SchemaComposer<TContext>,
 ) => {
-    const modelNullInputType = makeFieldsNullRecusive(modelTC.getITC(), model.name, 1);
+    const modelNullInputType = makeFieldsNullRecusive(modelTC.getITC(), 'NullInput', model.name, 1);
 
     const nullInputMap = fieldsTCRecusive(modelNullInputType);
 
@@ -468,16 +593,17 @@ function fieldsTCRecusive<TContext>(inputTC: InputTypeComposer<TContext>) {
 
 }
 
-function makeFieldsNullRecusive<TContext>(
+export function makeFieldsNullRecusive<TContext>(
     inputTC: InputTypeComposer<TContext>,
-    modelName?: string,
+    baseName: string,
+    modelName: string,
     depth = Number.POSITIVE_INFINITY,
     ITCFieldName?: string
 ) {
 
-    const newName = (ITCFieldName ? ITCFieldName : '') + modelName;
+    const newName = (ITCFieldName ?? '') + modelName;
 
-    const modelNullType = inputTC.clone(`${newName}NullInput`);
+    const modelNullType = inputTC.clone(newName + baseName);
 
     modelNullType.getFieldNames().forEach(fieldName => {
         modelNullType.makeFieldNullable(fieldName);
@@ -494,7 +620,7 @@ function makeFieldsNullRecusive<TContext>(
             
                 modelNullType.setField(
                     fieldName,
-                    makeFieldsNullRecusive(fieldTC, newName, (depth - 1), fieldName)
+                    makeFieldsNullRecusive(fieldTC, newName, baseName, depth - 1, fieldName)
                 );
             }
         }

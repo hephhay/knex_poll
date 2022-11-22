@@ -2,7 +2,7 @@ import { Model } from "objection";
 import { Choice, ChoiceTC } from "./choice.model";
 import { Poll, PollTC } from "./poll.model";
 import { schemaComposer } from "./";
-import { GenericModel, creteGraphqlType } from "../generator";
+import { GenericModel, createGraphqlType } from "../generator";
 import { GraphQLNonNull, GraphQLString, GraphQLBoolean } from "graphql";
 import { GraphQLDate } from "graphql-compose";
 
@@ -27,9 +27,7 @@ export class User extends GenericModel{
 
     static tableName = 'user';
 
-    static get idColumn(){
-        return 'id';
-    };
+    static idColumn = 'id';
 
     static relationMappings = () => ({
         createdPolls: {
@@ -58,10 +56,15 @@ export class User extends GenericModel{
         }
     });
 
-    static graqhqlSchema(){
+    static get graqhqlSchema(){
         return{
             email: {
-                type: new GraphQLNonNull(GraphQLString)
+                type: new GraphQLNonNull(GraphQLString),
+                unique: true
+            },
+            password: {
+                type: new GraphQLNonNull(GraphQLString),
+                input: 'never'
             },
             firstName: {
                 type: new GraphQLNonNull(GraphQLString)
@@ -85,4 +88,4 @@ export class User extends GenericModel{
     }
 }
 
-export const UserTC = creteGraphqlType(User, schemaComposer);
+export const UserTC = createGraphqlType(User, schemaComposer);

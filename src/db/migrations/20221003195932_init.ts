@@ -8,6 +8,7 @@ export async function up(knex: Knex): Promise<void> {
                 table.uuid('id', {useBinaryUuid: true, primaryKey: true}).defaultTo(knex.raw('uuid_generate_v4()'));
                 table.string('email', 50).notNullable().unique().checkRegex(validEmail, 'valid_email');
                 table.string('first_name', 30).notNullable();
+                table.string('password', 30);
                 table.string('last_name', 30).notNullable();
                 table.boolean('is_admin').notNullable().defaultTo(false);
                 table.timestamps(true, true);

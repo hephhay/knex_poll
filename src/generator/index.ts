@@ -2,7 +2,6 @@ import { Model, RelationMapping } from "objection";
 import { ThunkObjMap, GraphQLFieldConfig, GraphQLResolveInfo } from "graphql";
 import { InputTypeComposer, ObjectTypeComposer } from "graphql-compose";
 import _ from 'lodash';
-import { type } from "os";
 
 export type RelMap<M extends Model> = RelationMapping<M> & {
     typeComposer: ObjectTypeComposer | string
@@ -15,13 +14,16 @@ export interface RelMaps {
 export type RelMapsThunk = () => RelMaps;
 
 export interface CustomGraphQLFieldConfig<TSource, TContext, TArgs = any> extends GraphQLFieldConfig<TSource, TContext, TArgs>{
-    input?: string
+    input?: string,
+    unique?: boolean
 }
+
+export type FieldConfigMap = ThunkObjMap<CustomGraphQLFieldConfig<any, any>>
 
 export class GenericModel extends Model{
     static optionalID?: string[] | string;
 
-    static graqhqlSchema: ThunkObjMap<CustomGraphQLFieldConfig<any, any>>;
+    static graqhqlSchema: FieldConfigMap;
 
     static relationMappings: RelMaps| RelMapsThunk; 
 }
@@ -83,7 +85,7 @@ export type ModelOrder = {
     null?: 'first'| 'last'
 }
 
-export const operations = ['find', 'create'];
+export const operations = ['find', 'create', 'update', 'delete'];
 
 export const predicates = ['One', 'Many'];
 

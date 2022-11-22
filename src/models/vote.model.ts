@@ -1,11 +1,11 @@
-import { GraphQLNonNull } from "graphql";
+import { GraphQLID, GraphQLNonNull } from "graphql";
 import { GraphQLDate } from "graphql-compose";
 import { Model } from "objection";
 
 import { schemaComposer } from "./";
 import { Choice, ChoiceTC  } from "./choice.model";
 import { User, UserTC } from "./user.model";
-import { GenericModel, creteGraphqlType } from "../generator";
+import { GenericModel, createGraphqlType } from "../generator";
 
 export class Vote extends GenericModel{
     userID!: string;
@@ -13,10 +13,6 @@ export class Vote extends GenericModel{
     votedOn!: Date;
 
     static tableName = 'vote';
-
-    static get idColumn() {
-        return ['userId', 'choiceId']
-    }
 
     static relationMappings(){
         return {
@@ -44,6 +40,12 @@ export class Vote extends GenericModel{
 
     static get graqhqlSchema(){
         return{
+            userId: {
+                type: new GraphQLNonNull(GraphQLID)
+            },
+            choiceId: {
+                type: new GraphQLNonNull(GraphQLID)
+            },
             votedOn: {
                 type: new GraphQLNonNull(GraphQLDate),
                 input: 'omit'
@@ -53,7 +55,7 @@ export class Vote extends GenericModel{
 
 }
 
-export const VoteTC = creteGraphqlType(Vote, schemaComposer);
+export const VoteTC = createGraphqlType(Vote, schemaComposer);
 
 schemaComposer.Query.addFields({
     ourvotes:{

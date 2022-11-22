@@ -10,4 +10,12 @@ schemaComposer.Query.addFields({
 
 schemaComposer.Mutation.addFields({
     createOneChoice: ChoiceTC.getResolver('createOne')
-});``
+});
+
+schemaComposer.Mutation.addFields({
+    updateOneChoice: ChoiceTC.getResolver('updateOne')
+});
+
+schemaComposer.Mutation.addFields({
+    deleteeOneChoice: ChoiceTC.getResolver('deleteOne')
+});

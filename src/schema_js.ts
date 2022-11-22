@@ -1,10 +1,17 @@
-import { Choice } from "./models";
+import { Choice, User } from "./models";
 
 let blab:[string, string, string] = ['choice.name', 'ilike', '%b%'];
 
 (async() => {
-    let a = Choice.query().joinRelated('[referendum, voters.createdPolls]');
-    a.where(...blab).where('choice.name', 'ilike', '%a%');
+    function modifierFunc (query: any) {
+            query.select('*').select(Choice.relatedQuery('voters').count().as('number'));
+        }
+        function helpFunc (query: any) {
+            query.select('*').select(User.relatedQuery('createdPolls').count().as('number'));
+        }
+
+    let a = Choice.query().with('choice', Choice.query().modify(modifierFunc)).joinRelated(({voters: {$modify: [helpFunc]}})).where('voters.number', '>', 0).withGraphFetched({voters: true});
+    // let a = Choice.query().joinRelated({voters: {$modify: [helpFunc]}}).where('voters.number', 0).withGraphFetched({voters: true}).modify(modifierFunc).first();
     console.log(
         await a
 )})();

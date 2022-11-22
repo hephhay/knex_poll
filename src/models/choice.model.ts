@@ -1,11 +1,11 @@
-import { GraphQLNonNull, GraphQLString } from "graphql";
+import { GraphQLID, GraphQLInt, GraphQLNonNull, GraphQLString } from "graphql";
 import { GraphQLDate } from "graphql-compose";
 
 import { schemaComposer } from "./";
-import { Model } from "objection";
+import { Model, QueryBuilder } from "objection";
 import { Poll, PollTC } from "./poll.model";
 import { User } from "./user.model";
-import { GenericModel, creteGraphqlType } from "../generator";
+import { GenericModel, createGraphqlType } from "../generator";
 import _ from "lodash";
 
 export class Choice extends GenericModel{
@@ -14,6 +14,8 @@ export class Choice extends GenericModel{
     pollId!: string;
 
     name!: string;
+
+    numVotes!: number
 
     createdAt!: Date;
 
@@ -25,9 +27,16 @@ export class Choice extends GenericModel{
 
     static tableName = 'choice';
 
-    static get idColumn(){
-        return ['id', 'pollId']
-    };
+    static idColumn = 'id';
+
+    static modifiers = {
+        numVotes(query: QueryBuilder<Choice>){
+            query.select(
+                'choice.*',
+                Choice.relatedQuery('voters').count().as('numVotes')
+            );
+        }
+    }
 
     static relationMappings = () => ({
         referendum: {
@@ -47,19 +56,26 @@ export class Choice extends GenericModel{
             join: {
                 from: 'choice.id',
                 through: {
-                    from: 'vote.choiceID',
-                    to: 'vote.userID',
-                    extra: ['votedON'],
+                    from: 'vote.choiceId',
+                    to: 'vote.userId',
+                    extra: ['votedOn'],
                 },
                 to: 'user.id'
             }
         },
     });
 
-    static graqhqlSchema(){
+    static get graqhqlSchema(){
         return {
             name: {
                 type: new GraphQLNonNull(GraphQLString)
+            },
+            pollId:{
+                type: new GraphQLNonNull(GraphQLID)
+            },
+            numVotes: {
+                type: new GraphQLNonNull(GraphQLInt),
+                input: 'omit'
             },
             createdAt: {
                 type: new GraphQLNonNull(GraphQLDate),
@@ -73,4 +89,4 @@ export class Choice extends GenericModel{
     }
 }
 
-export const ChoiceTC = creteGraphqlType(Choice, schemaComposer)
+export const ChoiceTC = createGraphqlType(Choice, schemaComposer)

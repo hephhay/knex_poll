@@ -7,6 +7,7 @@ import http from 'http';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import { schema } from './schema';
+import { redisConnect, redisDisconnect } from './redis';
 
 // const schema = schemaComposer.buildSchema();
 
@@ -36,7 +37,7 @@ async function startApolloServer() {
             ApolloServerPluginDrainHttpServer({ httpServer }),
             {
                 // Fires whenever a GraphQL request is received from a client.
-                async requestDidStart(W ) {
+                async requestDidStart(requestContext) {
                     // console.log('Request started!');
 
                     return {
@@ -69,12 +70,23 @@ async function startApolloServer() {
             context: async ({ req }) => ({ token: req.headers.token }),
         }),
     );
+    // Redis Startup
+
+    await redisConnect();
 
     // Modified server startup
     await new Promise<void>((resolve) =>
         httpServer.listen({ port: 4000 }, resolve),
     );
     console.log(`🚀 Server ready at http://localhost:4000/`);
+
+    httpServer.on('close', shutDown);
+}
+
+function shutDown() {
+    console.log('shutting down redis connection');
+    redisDisconnect();
+    console.log('Server is shutting down');
 }
 
 startApolloServer();

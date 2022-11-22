@@ -4,16 +4,27 @@ import _ from 'lodash';
 import { Model } from "objection";
 import { GenericModel, resolveVal } from ".";
 
-export function creteGraphqlType<TSource extends typeof GenericModel, TContext = any>
+export function createGraphqlType<TSource extends typeof GenericModel, TContext = any>
 (
     model: TSource,
     schemaComposer: SchemaComposer<TContext>,
 ) {
+    const modelSchema = resolveVal(model.graqhqlSchema);
+
+    // console.log(model.name)
+
     const modelTC = schemaComposer.createObjectTC(
         new GraphQLObjectType<TSource>({
             name: model.name,
-            fields: model.graqhqlSchema
+            fields: modelSchema
     }));
+
+    const excluded_fields = _.pickBy(
+        modelSchema,
+        (value: any) => value.input === 'only' || value.input === 'never'
+    );
+
+    modelTC.removeField(Object.keys(excluded_fields));
 
     const addIDField = (idCol: string) => {
         modelTC.addFields({

@@ -1,19 +1,23 @@
 import { schemaComposer } from "./";
-import { Model } from "objection";
+import { Model, QueryBuilder } from "objection";
 import {Choice, ChoiceTC } from "./choice.model";
 import { User, UserTC } from "./user.model";
 import {
     GraphQLObjectType,
     GraphQLNonNull,
-    GraphQLString
+    GraphQLString,
+    GraphQLID,
+    GraphQLInt
 } from "graphql";
 import { GraphQLDate } from "graphql-compose";
-import { GenericModel, creteGraphqlType } from "../generator";
+import { GenericModel, createGraphqlType } from "../generator";
 
 export class Poll extends GenericModel{
     id!: string;
 
     title!: string;
+
+    numChoices!: number;
 
     createdBy!: string;
 
@@ -29,9 +33,16 @@ export class Poll extends GenericModel{
 
     static tableName = 'poll';
 
-    static get idColumn(){
-        return ['id', 'createdBy'];
-    };
+    static idColumn = 'id';
+
+    static modifiers = {
+        numChoices(query: QueryBuilder<Poll>){
+            query.select(
+                'poll.*', 
+                Poll.relatedQuery('choices').count().as('numChoices')
+            );
+        }
+    }
 
     static relationMappings = () => ({
         creator: {
@@ -57,10 +68,18 @@ export class Poll extends GenericModel{
     static get graqhqlSchema(){
         return{
             title: {
-                type: new GraphQLNonNull(GraphQLString)
+                type: new GraphQLNonNull(GraphQLString),
+                unique: true
             },
             description: {
                 type: new GraphQLNonNull(GraphQLString)
+            },
+            numChoices: {
+                type: new GraphQLNonNull(GraphQLInt),
+                input: 'omit'
+            },
+            createdBy: {
+                type: new GraphQLNonNull(GraphQLID)
             },
             createdAt: {
                 type: new GraphQLNonNull(GraphQLDate),
@@ -75,4 +94,4 @@ export class Poll extends GenericModel{
 
 }
 
-export const PollTC = creteGraphqlType(Poll, schemaComposer);
+export const PollTC = createGraphqlType(Poll, schemaComposer);
